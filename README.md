@@ -74,6 +74,9 @@ The server and the plugin talk through JSON files in `%TEMP%\clo3d_mcp` (overrid
   notches (`NotchList`), buttons (`ButtonHeadList`) and buttonholes (`ButtonHoleList`), in the coordinates
   written by `export_pattern_json`. Graphics are not stored in that JSON.
 - **Avatar tools** fail with a clear error when no avatar is loaded, instead of CLO's blocking dialog.
+  Arrangement needs an avatar that ships arrangement points, such as the avatars of CLO's library
+  (110 points on the female avatar: `get_arrangement_list`, then `arrange_pattern`). Some custom avatars
+  have none. `import_avatar` (`ImportAVAC`) refused `.avt` files in tests: load avatars from CLO's Library.
 - `ExportDXF` opens a dialog and is not exposed. `MovePatternPoint` broke pieces in tests and is not exposed.
 
 ## Development

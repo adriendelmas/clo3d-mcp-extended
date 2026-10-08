@@ -7,6 +7,20 @@ gathers and elastics, simulate, and look at the result.
 Derived from [clo3d-mcp](https://github.com/Ubani-Studio/clo3d-mcp) by Violet Sphinx, with a working plugin
 listener and **170 tools** instead of 33. Tested live on **CLO3D 2025.2.236, Windows 11**.
 
+## Works with pattern-making-skill
+
+This server and [pattern-making-skill](https://github.com/adriendelmas/pattern-making-skill) are built to
+work together. The skill computes the pattern. This server builds it in CLO3D.
+
+| | pattern-making-skill | clo3d-mcp-extended |
+|---|---|---|
+| Role | Computes the pattern: measurements, blocks, darts, flare, grading | Drives CLO3D: pieces, seams, fabrics, avatar, simulation, images |
+| Output | SVG, DXF, `clo3d_<size>.json` with exact Bezier curves and named edges | A garment in CLO3D |
+| Works alone | Yes, for pattern making and the SVG and DXF exports | Yes, for any CLO3D task |
+
+With both installed, the agent drafts the pattern, creates the pieces in CLO3D with one CLO3D line per
+pattern edge, sews them by edge name, places them on the avatar and simulates.
+
 ## What changed from the original
 
 - **The plugin actually listens.** CLO3D's embedded Python freezes background threads once a Script Editor run

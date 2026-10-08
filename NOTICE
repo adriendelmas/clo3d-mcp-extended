@@ -1,0 +1,17 @@
+clo3d-mcp-extended
+==================
+
+This project is derived from clo3d-mcp by Violet Sphinx (Ubani-Studio), released
+under the MIT licence:
+
+  https://github.com/Ubani-Studio/clo3d-mcp
+
+The original repository also ships interface headers and sample sources from CLO
+Virtual Fashion Inc. in `sdk/`. They are NOT included here: this project is pure
+Python and does not need them. CLO's own API documentation is public:
+
+  https://developer.clo3d.com/
+
+CLO3D is a trademark of CLO Virtual Fashion Inc. This project is not affiliated
+with, sponsored or endorsed by CLO Virtual Fashion Inc. You need your own CLO3D
+licence to use it.

@@ -46,11 +46,17 @@ for path in SERVER:
             tools[node.name] = short
     for command in re.findall(r'_send\(\s*"(\w+)"', text):
         sent.setdefault(command, short)
+    for node in ast.parse(text).body:  # a tool sends the command of its own name, so plugin and MCP agree
+        if isinstance(node, ast.FunctionDef) and any("tool" in ast.unparse(d) for d in node.decorator_list):
+            own = re.findall(r'_send\(\s*"(\w+)"', ast.unparse(node))
+            if own and node.name not in own:
+                errors.append(f"{short}: tool {node.name} sends {own[0]}: give the plugin command the tool's name")
 
 for command, where in sorted(sent.items()):
     if command not in registry:
         errors.append(f"server: {where} sends {command}, unknown to the plugin")
-for command in sorted(set(registry) - set(sent) - NO_TOOL):
+aliases = set(re.findall(r'"(\w+)": "\w+"', plugin[plugin.find('ALIASES = {'):]))
+for command in sorted(set(registry) - set(sent) - NO_TOOL - aliases):
     errors.append(f"plugin: command {command} has no MCP tool")
 
 print(f"{len(registry)} plugin commands, {len(tools)} MCP tools, {len(sent)} commands sent")

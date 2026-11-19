@@ -6,7 +6,7 @@ from clo3d_mcp.server import _send, mcp
 @mcp.tool()
 def list_clo_api() -> dict:
     """List the public functions of every CLO Python API module available in this CLO3D build."""
-    return _send("list_api")
+    return _send("list_clo_api")
 
 
 @mcp.tool()
@@ -17,7 +17,7 @@ def describe_clo_api(module: str, functions: list[str]) -> dict:
         module: For example "pattern_api", "export_api", "utility_api".
         functions: Function names to describe.
     """
-    return _send("api_doc", {"module": module, "functions": functions})
+    return _send("describe_clo_api", {"module": module, "functions": functions})
 
 
 @mcp.tool()

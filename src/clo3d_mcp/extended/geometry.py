@@ -215,3 +215,11 @@ def get_selected_patterns() -> dict:
 def select_pattern(pattern_index: int | None = None, name: str | None = None, selected: bool = True) -> dict:
     """Select or deselect a pattern piece in CLO3D, by index or by name."""
     return _send("select_pattern", {"pattern_index": pattern_index, "name": name, "selected": selected})
+
+
+@mcp.tool()
+def get_scene_summary() -> dict:
+    """Read the whole scene in one call, before acting on it: every pattern piece with its index, name, 2D
+    position, bounding box, fabric index, layer, mesh size and arrangement point; the fabrics with their names;
+    the avatars; and the arrangement points of the avatar with their indices and names."""
+    return _send("get_scene_summary")

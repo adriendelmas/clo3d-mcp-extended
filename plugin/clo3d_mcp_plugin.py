@@ -442,7 +442,7 @@ def handle_get_seam_groups(params):
     groups = [{"index": i, "name": pattern_api.GetSeamlinePairGroupName(i)} for i in range(count)]
     out = {"count": count, "groups": groups}
     if params.get("pattern_index") is not None:
-        out["in_pattern"] = list(pattern_api.GetSeamlinePairGroupListInPattern(int(params["pattern_index"])))
+        out["in_pattern"] = _items(pattern_api.GetSeamlinePairGroupListInPattern(int(params["pattern_index"])))
     return out
 
 
@@ -468,7 +468,7 @@ def handle_arrange_pattern(params):
 
 
 def handle_get_pattern_arrangements(params):
-    return {"arrangements": [dict(a) for a in pattern_api.GetArrangementOfPattern()]}
+    return {"arrangements": [dict(a) if isinstance(a, dict) else _fields(a) for a in _items(pattern_api.GetArrangementOfPattern())]}
 
 
 def handle_reset_cloth_arrangement(params):
@@ -648,11 +648,11 @@ def handle_export_view_image(params):
 def handle_export_custom_view_snapshot(params):
     paths = export_api.ExportCustomViewSnapshot(str(params["output_folder"]), int(params.get("width", 1024)),
                                                 int(params.get("height", 1024)), str(params.get("prefix", "")))
-    return {"files": list(paths)}
+    return {"files": _items(paths)}
 
 
 def handle_export_rendering_image(params):
-    return {"files": [list(x) for x in export_api.ExportRenderingImage(str(params["file_path"]))]}
+    return {"files": [_items(x) for x in _items(export_api.ExportRenderingImage(str(params["file_path"])))]}
 
 
 def handle_set_fit_maps(params):
@@ -667,6 +667,19 @@ def handle_set_fit_maps(params):
 # ---------------------------------------------------------------------------
 # EXTENDED - graphics: logos, badges, prints
 # ---------------------------------------------------------------------------
+
+def _items(value):
+    """A CLO result as a list: lists and tuples as they are, anything else (None, a bool from an old build) empty."""
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def _mapping(params, key):
+    """A params entry that must be a JSON object."""
+    value = params.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(key + " must be an object of name: value pairs")
+    return value
+
 
 def _fields(obj):
     """Plain numeric and text fields of a CLO value object, for JSON."""
@@ -828,7 +841,7 @@ def handle_edit_annotation(params):
 
 def handle_get_annotations(params):
     items = pattern_api.GetPatternAnnotation(int(params["pattern_index"]))
-    return {"annotations": [{"text": t, "x": x, "y": y} for t, x, y in items]}
+    return {"annotations": [{"text": a[0], "x": a[1], "y": a[2]} for a in _items(items) if isinstance(a, (list, tuple)) and len(a) >= 3]}
 
 
 # ---------------------------------------------------------------------------
@@ -940,8 +953,10 @@ def handle_set_shrinkage(params):
 
 
 def handle_get_simulation_quality(params):
-    quality, mode = utility_api.GetSimulationQuality()
-    return {"quality": quality, "simulation_mode": mode}
+    q = _items(utility_api.GetSimulationQuality())
+    if len(q) != 2:
+        return {"raw": str(utility_api.GetSimulationQuality())}
+    return {"quality": q[0], "simulation_mode": q[1]}
 
 
 def handle_set_simulation_settings(params):
@@ -1327,7 +1342,7 @@ def handle_get_avatar_properties(params):
 def handle_set_avatar_properties(params):
     _require_avatar()
     index = int(params["avatar_index"])
-    utility_api.SetAvatarProperties(index, {str(k): str(v) for k, v in params["properties"].items()})
+    utility_api.SetAvatarProperties(index, {str(k): str(v) for k, v in _mapping(params, "properties").items()})
     return {"properties": dict(utility_api.GetAvatarProperties(index))}
 
 
@@ -1397,7 +1412,7 @@ def handle_get_trim_material(params):
 
 def handle_set_trim_material(params):
     style, mesh = int(params["style_index"]), int(params.get("mesh_index", 0))
-    utility_api.SetTrimMaterialProperties(style, mesh, {str(k): str(v) for k, v in params["properties"].items()})
+    utility_api.SetTrimMaterialProperties(style, mesh, {str(k): str(v) for k, v in _mapping(params, "properties").items()})
     return {"properties": dict(utility_api.GetTrimMaterialProperties(style, mesh))}
 
 
@@ -1434,7 +1449,8 @@ def handle_add_graphic_to_pattern(params):
 
 def handle_get_graphic_positions(params):
     raw = utility_api.GetGraphicStylePosition(int(params["style_index"]), bool(params.get("flag", True)))
-    return {"positions": {str(k): [list(p) for p in v] for k, v in dict(raw).items()}}
+    raw = raw if isinstance(raw, dict) else {}
+    return {"positions": {str(k): [_items(p) for p in _items(v)] for k, v in raw.items()}}
 
 
 def handle_find_api_types(params):
@@ -1627,11 +1643,251 @@ def handle_stop(params):
     return {"stopped": True}
 
 
+
+# ---------------------------------------------------------------------------
+# EXTENDED: whole garment in one call, scene summary
+# ---------------------------------------------------------------------------
+# Garment JSON (written by pattern-making-skill, clo3d_<size>.json): {"unit": "mm", "pieces": [...],
+# "seams": [...], "holds": [...]}. Piece: {"name", "points": [[x, y, type]...], "edges": [{"from": node}...],
+# "fabric": role, "particle_distance": mm, "layer": int, "internals": [[[x, y]...]...] (internal lines),
+# "arrange": {"name" | "index", "orientation", "x", "y", "offset"}}. Seam: [piece A, node a1, node a2, piece B, node b1, node b2, {...}], a1 sewn to b1.
+# Hold: {"top", "under", "edge": [a, b], "at": {a: [x, y], b: [x, y]}, "layer"}: the top piece's edge is sewn
+# onto an internal line of the under piece (overlapping fronts).
+
+FAR_MM = 2500.0  # a piece created this far from the 2D origin lands metres from the avatar in 3D and falls
+
+
+def _norm_key(k):
+    return str(k).replace(" ", "").replace("_", "").lower()
+
+
+def _arrangement_names():
+    """Arrangement point names of the loaded avatar, in index order."""
+    names = []
+    for item in _items(pattern_api.GetArrangementList()):
+        name = None
+        if isinstance(item, dict):
+            for k, v in item.items():
+                if _norm_key(k) in ("arrangementname", "name"):
+                    name = str(v)
+        elif isinstance(item, str):
+            name = item
+        names.append(name if name is not None else str(item))
+    return names
+
+
+def _fabric_names():
+    count = fabric_api.GetFabricCount(True)
+    return [_safe(fabric_api.GetFabricName, i) for i in range(count)]
+
+
+def _resolve_fabric(value, names):
+    """A fabric given as an index or as a name (exact, then case-insensitive substring)."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    v = str(value)
+    if v in names:
+        return names.index(v)
+    low = [str(n).lower() for n in names]
+    for i, n in enumerate(low):
+        if v.lower() in n:
+            return i
+    raise ValueError("fabric not found: " + v + " (fabrics: " + ", ".join(str(n) for n in names) + ")")
+
+
+def _resolve_arrangement(spec, names):
+    """Arrangement point index from {"index": i} or {"name": s}; the name is matched exactly, then
+    case-insensitively, then as a substring. Returns (index, name) or (None, None)."""
+    if spec.get("index") is not None:
+        i = int(spec["index"])
+        return i, (names[i] if 0 <= i < len(names) else None)
+    want = spec.get("name")
+    if not want:
+        return None, None
+    if want in names:
+        return names.index(want), want
+    low = [n.lower() for n in names]
+    if want.lower() in low:
+        i = low.index(want.lower())
+        return i, names[i]
+    for i, n in enumerate(low):
+        if want.lower() in n:
+            return i, names[i]
+    return None, None
+
+
+def _garment_edge(piece, n1, n2):
+    """Line index and direction of the edge n1-n2 of a garment piece (edge i runs from edges[i].from to
+    edges[i+1].from). Names split by a hole slit may carry a trailing '~'."""
+    e = piece["edges"]
+    for a in (n1, n1 + "~"):
+        for b in (n2, n2 + "~"):
+            for i, x in enumerate(e):
+                nxt = e[(i + 1) % len(e)]["from"]
+                if (x["from"], nxt) == (a, b):
+                    return i, True
+                if (x["from"], nxt) == (b, a):
+                    return i, False
+    raise ValueError(piece["name"] + ": no edge " + n1 + "-" + n2)
+
+
+def handle_build_garment(params):
+    """Create every piece of a garment JSON, name it, set its collision thickness, mesh, fabric, layer and
+    arrangement point, then sew every seam and hold. One request instead of hundreds."""
+    if params.get("file_path"):
+        with open(str(params["file_path"]), "r") as f:
+            data = json.load(f)
+    else:
+        data = params["garment"]
+    pieces = data.get("pieces", [])
+    if not pieces:
+        raise ValueError("garment has no pieces")
+    if not params.get("allow_far", False):
+        for p in pieces:
+            for q in p["points"]:
+                if abs(float(q[0])) > FAR_MM or abs(float(q[1])) > FAR_MM:
+                    raise ValueError(p["name"] + " has a point " + str(int(max(abs(q[0]), abs(q[1])))) +
+                                     " mm from the 2D origin: CLO3D would create it metres from the avatar "
+                                     "(pieces falling and a running simulation have crashed CLO3D). Lay the "
+                                     "pieces out near the origin, or pass allow_far: true.")
+    thickness = params.get("collision_thickness", 0)
+    default_mesh = params.get("particle_distance")
+    fabric_names = _fabric_names()
+    roles = {}
+    for role, value in (params.get("fabrics") or {}).items():
+        roles[role] = _resolve_fabric(value, fabric_names)
+    do_arrange = params.get("arrange", True) and export_api.GetAvatarCount() > 0
+    arr_names = _arrangement_names() if do_arrange else []
+    warnings = []
+    if params.get("arrange", True) and not do_arrange:
+        warnings.append("no avatar loaded: pieces not arranged")
+
+    n0 = pattern_api.GetPatternCount()
+    idx, out_pieces = {}, []
+    for i, p in enumerate(pieces):
+        k = n0 + i
+        pattern_api.CreatePatternWithPoints(_points(p["points"]))
+        if pattern_api.GetPatternCount() != k + 1:
+            raise ValueError("CLO3D did not create piece " + p["name"] + " (count " +
+                             str(pattern_api.GetPatternCount()) + ", expected " + str(k + 1) + ")")
+        pattern_api.SetPatternPieceName(k, str(p["name"]))
+        idx[p["name"]] = k
+        rec = {"name": p["name"], "index": k}
+        if thickness is not None:
+            pattern_api.SetAddlThicknessCollision(k, float(thickness))
+        mesh = p.get("particle_distance", default_mesh)
+        if mesh is not None:
+            pattern_api.SetParticleDistanceOfPattern(k, float(mesh))
+            rec["particle_distance"] = float(mesh)
+        role = p.get("fabric")
+        fab = roles.get(role, roles.get("*"))
+        if fab is not None:
+            pattern_api.SetPatternPieceFabricIndex(k, int(fab))
+            rec["fabric_index"] = int(fab)
+        elif role and roles:
+            warnings.append(p["name"] + ": no fabric given for role " + str(role))
+        if p.get("layer"):
+            pattern_api.SetPatternLayer(k, int(p["layer"]))
+        for line in p.get("internals") or []:   # roll lines, pocket openings, fold lines
+            pattern_api.CreateInternalShapeWithPoints(k, _points(line), False)
+        if do_arrange and p.get("arrange"):
+            ar = p["arrange"]
+            ai, an = _resolve_arrangement(ar, arr_names)
+            if ai is None:
+                warnings.append(p["name"] + ": arrangement point not found: " + str(ar.get("name")))
+                rec["arranged"] = None
+            else:
+                pattern_api.SetArrangement(k, int(ai))
+                if ar.get("x") is not None and ar.get("y") is not None:
+                    pattern_api.SetArrangementPosition(k, int(ar["x"]), int(ar["y"]), int(ar.get("offset", 0)))
+                if ar.get("orientation") is not None:
+                    pattern_api.SetArrangementOrientation(k, int(ar["orientation"]))
+                rec["arranged"] = an
+        edges = p.get("edges") or []
+        if edges:
+            got = [pattern_api.GetLineLength(k, j) for j in range(len(edges))]
+            rec["lines"] = len(got)
+            devs = [abs(float(g) - float(e.get("length_mm", g))) for g, e in zip(got, edges) if "length_mm" in e]
+            if devs:
+                rec["max_deviation_mm"] = round(max(devs), 2)
+        out_pieces.append(rec)
+
+    by_name = {p["name"]: p for p in pieces}
+    sewn, failed = 0, []
+    for s_ in data.get("seams", []):
+        if s_[0] not in by_name or s_[3] not in by_name:
+            failed.append({"seam": s_[:6], "error": "piece missing"})
+            continue
+        try:
+            la, da = _garment_edge(by_name[s_[0]], s_[1], s_[2])
+            lb, db = _garment_edge(by_name[s_[3]], s_[4], s_[5])
+            pattern_api.AddSeamlinePairGroup(idx[s_[0]], la, idx[s_[3]], lb, da, db)
+            sewn += 1
+        except Exception as e:
+            failed.append({"seam": s_[:6], "error": str(e)})
+    holds_sewn, holds_failed = 0, []
+    for h in data.get("holds", []):
+        if h["top"] not in by_name or h["under"] not in by_name:
+            holds_failed.append({"hold": h["top"], "error": "piece missing"})
+            continue
+        try:
+            line, fwd = _garment_edge(by_name[h["top"]], h["edge"][0], h["edge"][1])
+            a, b = (h["edge"][0], h["edge"][1]) if fwd else (h["edge"][1], h["edge"][0])
+            child = pattern_api.CreateInternalShapeWithPoints(idx[h["under"]], _points([h["at"][a], h["at"][b]]), False)
+            pattern_api.AddSeamlinePairGroup(idx[h["top"]], line, idx[h["under"]], int(child), 0, True, True)
+            if h.get("layer"):
+                pattern_api.SetPatternLayer(idx[h["top"]], int(h["layer"]))
+            holds_sewn += 1
+        except Exception as e:
+            holds_failed.append({"hold": h["top"], "error": str(e)})
+    unplaced = [p["name"] for p in pieces if not p.get("arrange")] if do_arrange else [p["name"] for p in pieces]
+    return {"pieces": out_pieces, "indices": idx, "seams_sewn": sewn, "seams_failed": failed,
+            "holds_sewn": holds_sewn, "holds_failed": holds_failed, "unplaced": unplaced, "warnings": warnings}
+
+
+def handle_get_scene_summary(params):
+    """Everything an agent reads before acting, in one call: pieces with their state, fabrics, avatars and
+    the arrangement points of the avatar."""
+    count = pattern_api.GetPatternCount()
+    arr_by_piece = {}
+    if export_api.GetAvatarCount():
+        for a in _items(pattern_api.GetArrangementOfPattern()):
+            d = dict(a) if isinstance(a, dict) else _fields(a)
+            if not isinstance(d, dict):
+                continue
+            k = None
+            for key, v in d.items():
+                if _norm_key(key) == "patternindex":
+                    k = int(v)
+            if k is not None:
+                arr_by_piece[k] = d
+    pieces = []
+    for i in range(count):
+        a = arr_by_piece.get(i, {})
+        arr_name = None
+        for key, v in a.items():
+            if _norm_key(key) == "arrangementname":
+                arr_name = v
+        pieces.append({"index": i, "name": pattern_api.GetPatternPieceName(i),
+                       "position": _safe(pattern_api.GetPatternPiecePos, i),
+                       "bounding_box": _safe(pattern_api.GetBoundingBoxOfPattern, i),
+                       "fabric_index": _safe(pattern_api.GetPatternPieceFabricIndex, i),
+                       "layer": _safe(pattern_api.GetPatternLayer, i),
+                       "particle_distance": _safe(pattern_api.GetParticleDistanceOfPattern, i),
+                       "arrangement": arr_name})
+    fabrics = [{"index": i, "name": n} for i, n in enumerate(_fabric_names())]
+    avatars = handle_get_avatars({})["avatars"]
+    names = _arrangement_names() if avatars else []
+    return {"project": _safe(utility_api.GetProjectName), "pattern_count": count, "pieces": pieces,
+            "fabrics": fabrics, "avatars": avatars,
+            "arrangement_points": [{"index": i, "name": n} for i, n in enumerate(names)]}
+
+
 HANDLERS = {
     "ping": handle_ping,
     "stop": handle_stop,
     "get_line_lengths": handle_get_line_lengths,
-    "sew": handle_sew,
+    "sew_lines": handle_sew,
     "get_seam_groups": handle_get_seam_groups,
     "arrange_pattern": handle_arrange_pattern,
     "get_pattern_arrangements": handle_get_pattern_arrangements,
@@ -1657,7 +1913,7 @@ HANDLERS = {
     "export_custom_view_snapshot": handle_export_custom_view_snapshot,
     "export_rendering_image": handle_export_rendering_image,
     "set_fit_maps": handle_set_fit_maps,
-    "api_doc": handle_api_doc,
+    "describe_clo_api": handle_api_doc,
     "replace_fabric": handle_replace_fabric,
     # EXTENDED - graphics
     "import_graphic_style": handle_import_graphic_style,
@@ -1766,16 +2022,16 @@ HANDLERS = {
     "find_assets": handle_find_assets,
     "add_graphic_to_pattern": handle_add_graphic_to_pattern,
     "get_graphic_positions": handle_get_graphic_positions,
-    "list_api": handle_list_api,
+    "list_clo_api": handle_list_api,
     "get_project_info": handle_get_project_info,
     "new_project": handle_new_project,
     "open_file": handle_open_file,
-    "save_file": handle_save_file,
+    "save_project": handle_save_file,
     "get_garment_info": handle_get_garment_info,
     "get_pattern_count": handle_get_pattern_count,
     "get_pattern_list": handle_get_pattern_list,
     "get_pattern_info": handle_get_pattern_info,
-    "get_bounding_box": handle_get_bounding_box,
+    "get_pattern_bounding_box": handle_get_bounding_box,
     "set_pattern_name": handle_set_pattern_name,
     "copy_pattern": handle_copy_pattern,
     "delete_pattern": handle_delete_pattern,
@@ -1785,7 +2041,7 @@ HANDLERS = {
     "get_fabric_count": handle_get_fabric_count,
     "get_fabric_list": handle_get_fabric_list,
     "add_fabric": handle_add_fabric,
-    "assign_fabric": handle_assign_fabric,
+    "assign_fabric_to_pattern": handle_assign_fabric,
     "set_fabric_color": handle_set_fabric_color,
     "get_fabric_for_pattern": handle_get_fabric_for_pattern,
     "delete_fabric": handle_delete_fabric,
@@ -1810,7 +2066,12 @@ HANDLERS = {
     "get_avatars": handle_get_avatars,
     "show_hide_avatar": handle_show_hide_avatar,
     "get_avatar_genders": handle_get_avatar_genders,
+    "build_garment": handle_build_garment,
+    "get_scene_summary": handle_get_scene_summary,
 }
+
+# Former command names, kept for scripts written against them. New code uses the MCP tool names.
+ALIASES = {"sew": "sew_lines", "api_doc": "describe_clo_api", "list_api": "list_clo_api", "save_file": "save_project", "get_bounding_box": "get_pattern_bounding_box", "assign_fabric": "assign_fabric_to_pattern"}
 
 
 # ---------------------------------------------------------------------------
@@ -1828,7 +2089,7 @@ def process_command(data):
     cmd_type = request.get("type")
     params = request.get("params", {})
 
-    handler = HANDLERS.get(cmd_type)
+    handler = HANDLERS.get(ALIASES.get(cmd_type, cmd_type))
     if not handler:
         return json.dumps({
             "id": req_id,

@@ -29,7 +29,9 @@ pattern edge, sews them by edge name, places them on the avatar and simulates.
   blocking loop (untested on macOS).
 - **The server starts.** `mcp` is pinned below 2, and `FastMCP(instructions=...)` replaces an argument that
   no 1.x release accepts.
-- **137 new tools**, each an explicit, typed plug-in command. No generic "call any function" entry point.
+- **139 new tools**, each an explicit, typed plug-in command. `build_garment` builds a whole garment (pieces,
+  mesh, fabric by role, arrangement by point name, seams, wrap holds) from one JSON file in one call;
+  `get_scene_summary` reads the whole scene in one call. No generic "call any function" entry point.
 - **Fixes** for API calls that raised errors on current CLO builds (`GetFabricCount`, `SetSimulationQuality`,
   `CopyColorway`) and a handler for `replace_fabric`, which had none.
 
@@ -38,12 +40,12 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool.
 | Area | Tools | Examples |
 |---|---|---|
 | Original | 33 | patterns, fabrics, export, import, simulation, colorways |
-| Geometry | 24 | internal shapes, annotations, instances, symmetry, unfold, selection |
+| Geometry | 25 | scene summary, internal shapes, annotations, instances, symmetry, unfold, selection |
 | Sewing | 14 | sew outline or internal lines, topstitches and their styles, seam tape, shirring, elastic |
 | Simulation | 15 | avatar arrangement, layers, stiffness, shrinkage, mesh, advanced settings |
 | Materials | 39 | fabric textures and PBR settings, fabric duplication, graphics, trims, buttons, zippers |
 | Avatar | 16 | avatars, measurements CSV, poses, CLO's own grading sizes |
-| Files | 9 | pattern JSON, garment information, bill of materials, CLO asset library |
+| Files | 10 | whole garment in one call, pattern JSON, garment information, bill of materials, CLO asset library |
 | Visuals | 13 | camera, view images, 2D pattern snapshot, stress and strain maps, technical drawing |
 | Nesting | 4 | automatic layout on the fabric width |
 | Docs | 3 | list and describe the CLO Python API, read-only |
@@ -91,6 +93,8 @@ The server and the plugin talk through JSON files in `%TEMP%\clo3d_mcp` (overrid
   Arrangement needs an avatar that ships arrangement points, such as the avatars of CLO's library
   (110 points on the female avatar: `get_arrangement_list`, then `arrange_pattern`). Some custom avatars
   have none. `import_avatar` (`ImportAVAC`) refused `.avt` files in tests: load avatars from CLO's Library.
+- Plug-in command names are the MCP tool names; the former names (`sew`, `save_file`, `get_bounding_box`,
+  `assign_fabric`, `list_api`, `api_doc`) still work as aliases.
 - `ExportDXF` opens a dialog and is not exposed. `MovePatternPoint` broke pieces in tests and is not exposed.
 
 ## Development

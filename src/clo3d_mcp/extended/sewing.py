@@ -23,7 +23,7 @@ def sew_lines(pattern_a: int, line_a: int, pattern_b: int, line_b: int,
         child_a: Optional internal shape index on piece A (from create_internal_shape).
         child_b: Optional internal shape index on piece B (from create_internal_shape).
     """
-    return _send("sew", {"pattern_a": pattern_a, "line_a": line_a, "pattern_b": pattern_b, "line_b": line_b,
+    return _send("sew_lines", {"pattern_a": pattern_a, "line_a": line_a, "pattern_b": pattern_b, "line_b": line_b,
                          "direction_a": direction_a, "direction_b": direction_b,
                          "child_a": child_a, "child_b": child_b})
 

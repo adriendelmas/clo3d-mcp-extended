@@ -1,6 +1,6 @@
 # Tools
 
-170 MCP tools, grouped by module of `src/clo3d_mcp`. Generated from the server code.
+172 MCP tools, grouped by module of `src/clo3d_mcp`. Generated from the server code.
 
 ## Original tools (33)
 
@@ -42,7 +42,7 @@ Module: `server.py`
 | `set_pattern_name` | Rename a pattern piece. |
 | `simulate` | Run cloth simulation for a number of steps. |
 
-## Geometry: pieces, points, lines, annotations (24)
+## Geometry: pieces, points, lines, annotations (25)
 
 Module: `extended/geometry.py`
 
@@ -61,6 +61,7 @@ Module: `extended/geometry.py`
 | `get_line_lengths` | Get the length in mm of the first `count` outline lines of a pattern piece. |
 | `get_pattern_details` | Get the 2D position, area and grain direction of a pattern piece. |
 | `get_pattern_input_information` | Get the input data CLO3D keeps for a pattern piece, or for all pieces if no index is given. |
+| `get_scene_summary` | Read the whole scene in one call: every piece with position, bounding box, fabric, layer, mesh size and arrangement point; fabrics; avatars; arrangement points with names. |
 | `get_selected_patterns` | Get the pattern pieces the user has selected in CLO3D, by name and index. |
 | `instance_pattern` | Create a linked copy (instance) of a pattern piece: edits on one apply to the other. |
 | `move_pattern_relative` | Move a pattern piece by (dx, dy) mm from its current position in the 2D window. |
@@ -185,12 +186,13 @@ Module: `extended/avatar.py`
 | `set_avatar_softness` | Read, or set, the soft body stiffness of an avatar (how the body gives under tight garments). |
 | `show_hide_avatar` | Show or hide the avatar in the 3D window. |
 
-## Files and CLO library (9)
+## Files and CLO library (10)
 
 Module: `extended/files.py`
 
 | Tool | Description |
 |---|---|
+| `build_garment` | Build a whole garment in one call from a garment JSON (pattern-making-skill): pieces, mesh, fabric by role, arrangement by point name, seams and wrap holds. |
 | `export_bom` | Save the bill of materials: fabrics, trims and quantities (absolute path). |
 | `export_garment_information` | Save the garment information sheet to JSON. Without a path, it goes to CLO's temporary folder. |
 | `export_pattern_json` | Export the pattern pieces of the project to a JSON file (absolute path). |

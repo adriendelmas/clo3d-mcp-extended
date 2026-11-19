@@ -62,3 +62,35 @@ def find_assets(extensions: list[str], root: str | None = None, limit: int = 100
     """List files of CLO's asset library by extension, for example ["avt"] for avatars, ["zfab"] for fabrics."""
     return _send("find_assets", {"extensions": extensions, "root": root, "limit": limit})
 
+
+
+@mcp.tool()
+def build_garment(file_path: str | None = None, garment: dict | None = None, fabrics: dict | None = None,
+                  arrange: bool = True, collision_thickness: float | None = 0, particle_distance: float | None = None,
+                  allow_far: bool = False) -> dict:
+    """Build a whole garment in one call from a garment JSON (pattern-making-skill's clo3d_<size>.json):
+    pieces created and named, collision thickness, mesh, fabric by role, layer, arrangement point by name,
+    then every seam and wrap hold. Returns the piece indices, the line-length deviation of each piece,
+    the seams that failed, the pieces left unplaced and warnings.
+
+    Garment JSON: {"pieces": [{"name", "points": [[x, y, type]...] in mm (y up, type 3 = Bezier control),
+    "edges": [{"from": node, "length_mm"}...], "fabric": role, "particle_distance", "layer",
+    "arrange": {"name": arrangement point name | "index", "orientation", "x", "y", "offset"}}],
+    "seams": [[piece A, node a1, node a2, piece B, node b1, node b2, {"ease", "why"}]...],
+    "holds": [{"top", "under", "edge": [a, b], "at": {a: [x, y], b: [x, y]}, "layer"}]}.
+
+    Args:
+        file_path: Absolute path of the garment JSON (CLO3D reads it), or pass `garment` inline.
+        garment: The garment JSON as a dict, instead of file_path.
+        fabrics: Fabric per role, e.g. {"shell": 2, "lining": "Cotton Twill", "*": 0}: index or name; "*" is
+            the default for pieces whose role is not listed. Without it, pieces keep CLO3D's current fabric.
+        arrange: Place pieces on their arrangement points (needs an avatar with arrangement points).
+        collision_thickness: Added collision thickness for every piece, in mm; 0 by default because fabrics
+            already carry their thickness. None leaves CLO3D's default.
+        particle_distance: Mesh size in mm for pieces that do not set their own (None: CLO3D's default 20).
+        allow_far: Accept points more than 2.5 m from the 2D origin (refused by default: pieces created that
+            far fall for metres and have crashed CLO3D).
+    """
+    return _send("build_garment", {"file_path": file_path, "garment": garment, "fabrics": fabrics,
+                                   "arrange": arrange, "collision_thickness": collision_thickness,
+                                   "particle_distance": particle_distance, "allow_far": allow_far})
